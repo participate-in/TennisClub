@@ -1,0 +1,49 @@
+﻿body {
+}
+/* サムネイル（通常時）のスタイル */
+.img-thumbnail {
+    width: 300px; /* 好みの小ささに調整してください */
+    height: auto;
+    cursor: pointer; /* 重ねたときに虫眼鏡やポインターにする */
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    transition: transform 0.2s;
+}
+
+    .img-thumbnail:hover {
+        transform: scale(1.02); /* マウスを乗せたときに少しだけ大きくして「押せる感」を出す */
+    }
+
+/* モーダルの背景（画面全体を暗くする） */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.8); /* 背景を80%の黒透過にする */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; /* 一番手前に表示 */
+    cursor: zoom-out; /* 閉じる用のポインター */
+}
+
+/* 拡大画像のスタイル */
+.modal-content-wrapper {
+    text-align: center;
+}
+
+.img-large {
+    max-width: 90%; /* 画面の横幅90%を超えないようにする */
+    max-height: 80vh; /* 画面の高さ80%を超えないようにする */
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    border-radius: 8px;
+}
+
+/* キャプション（任意） */
+.modal-caption {
+    color: white;
+    margin-top: 10px;
+    font-size: 0.9rem;
+}

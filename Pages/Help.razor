@@ -1,0 +1,56 @@
+﻿@page "/help"
+
+アプリの使用説明
+
+<p>以下のスクショを参考に操作してください。画像をクリックすると拡大します。</p>
+
+<div class="screenshot-gallery">
+    <div class="thumbnail-container">
+        <h4>乱数表ページの操作</h4>
+        <img src="/images/MatchCardFigure.jpg"
+             alt="スクショ1"
+             class="img-thumbnail" @onclick='() => OpenModal("/images/MatchCardFigure.jpg")' />
+    </div>
+    <div class="thumbnail-container">
+        <h4>出欠・計算表ページの操作</h4>
+        <img src="/images/CalculateFigure.jpg"
+             alt="スクショ1"
+             class="img-thumbnail" @onclick='() => OpenModal("/images/CalculateFigure.jpg")' />
+    </div>
+
+   
+</div>
+
+@if (isModalOpen)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content-wrapper">
+            <img src="@currentImagePath" alt="拡大画面" class="img-large" />
+            <p class="modal-caption">クリックすると閉じます</p>
+        </div>
+    </div>
+}
+
+@code {
+    // モーダルが開いているかどうか
+    private bool isModalOpen = false;
+
+    // 現在、拡大表示している画像のパスを保存する変数
+    private string currentImagePath = "";
+
+    // 画像がクリックされたとき、その画像のパスを受け取ってモーダルを開く
+    private void OpenModal(string imagePath)
+    {
+        currentImagePath = imagePath;
+        isModalOpen = true;
+    }
+
+    // モーダルを閉じる
+    private void CloseModal()
+    {
+        isModalOpen = false;
+        currentImagePath = "";
+    }
+
+
+}

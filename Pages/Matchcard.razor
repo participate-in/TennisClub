@@ -1,0 +1,400 @@
+﻿@page "/Match"
+@inject IJSRuntime JSRuntime
+
+
+
+<div class="container">
+    <h3 class="mb-4">テニス乱数表生成ツール</h3>
+
+    <!-- プレイヤー登録エリア -->
+    <div class="card mb-4 p-3">
+        <h5>プレイヤー追加</h5>
+        <div class="input-group">
+            <input @ref="playerNameInput" autofocus type="text" class="form-control" placeholder="名前を入力" @bind="newPlayerName" @onkeypress="HandleKeyPress" />
+            <button class="btn btn-success" @onclick="AddPlayer">追加</button>
+        </div>
+    </div>
+
+    <!-- プレイヤー一覧と対戦結果 -->
+    <div class="row mb-4">
+        <!-- 左側：プレイヤーリスト -->
+        <div class="col-md-6 mb-3 mb-md-0">
+            <div class="card p-3 h-100">
+                <h5>プレイヤー一覧 (参加中: @players.Count(p => p.Status == "active")人 / 総数: @players.Count 人)</h5>
+                <ul class="list-group mt-2">
+                    @for (int i = 0; i < players.Count; i++)
+                    {
+                        var index = i;
+                        var p = players[index];
+                        <li class="list-group-item d-flex justify-content-between align-items-center @(p.Status == "resting" ? "player-resting" : "")">
+                            <div>
+                                <span class="fw-bold">@p.Name</span>
+                                <span class="badge bg-secondary ms-2">試合数: @p.MatchCount</span>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm me-2 @(p.Status == "resting" ? "btn-outline-secondary" : "btn-primary")" @onclick="() => ToggleStatus(index)">
+                                    @(p.Status == "resting" ? "休憩中" : "参加中")
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemovePlayer(index)">削除</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+
+
+        <!-- 設定エリア -->
+        <div class="col-md-6">
+            <div class="card p-3 h-100">
+                <h5>条件設定</h5>
+
+                <div class="my-2">
+                    <label class="form-label d-block fw-bold mb-1" style="font-size: 0.9rem;">試合形式</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="matchType" id="doubles" value="doubles" checked="@(matchType == "doubles")" @onchange='() => matchType = "doubles"' />
+                        <label class="form-check-label" for="doubles">ダブルス</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="matchType" id="singles" value="singles" checked="@(matchType == "singles")" @onchange='() => matchType = "singles"' />
+                        <label class="form-check-label" for="singles">シングルス</label>
+                    </div>
+                </div>
+
+                <div class="my-2">
+                    <label class="form-label d-block fw-bold mb-1" style="font-size: 0.9rem;">生成モード</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="generationMode" id="singleMatch" value="single" checked="@(generationMode == "single")" @onchange='() => generationMode = "single"' />
+                        <label class="form-check-label" for="singleMatch">1試合ずつ</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="generationMode" id="fiveMatches" value="five" checked="@(generationMode == "five")" @onchange='() => generationMode = "five"' />
+                        <label class="form-check-label" for="fiveMatches">5試合まとめて</label>
+                    </div>
+                </div>
+
+                <div class="mb-3 d-flex align-items-end justify-content-between">
+                    <div>
+                        <label for="courtCount" class="form-label fw-bold mb-1" style="font-size: 0.9rem;">使用コート数</label>
+                        <input type="number" class="form-control" id="courtCount" style="max-width: 80px;" @bind="courtCount" min="1" />
+                    </div>
+
+                    @if (players.Any())
+                    {
+                        <button class="btn btn-sm btn-link text-danger text-decoration-none mb-1" @onclick="ResetMatchCounts">
+                            <i class="bi bi-trash"></i> 試合回数をリセット
+                        </button>
+                    }
+                </div>
+
+                <button class="btn btn-success w-100 mb-2" @onclick="GenerateMatches">
+                    @(generationMode == "five" ? "対戦表を5試合分生成" : "対戦表を生成")
+                </button>
+
+                @if (matchResults.Any())
+                {
+                    <button class="btn btn-outline-danger w-100" @onclick="UndoGeneration">直前の生成を取り消す</button>
+                }
+
+                <div class="card w-100 mt-2 border-0 bg-transparent">
+                    <h5>対戦カード結果</h5>
+                    <div class="w-100">
+                        @foreach (var match in matchResults)
+                        {
+                            @if (!string.IsNullOrEmpty(match.RoundName))
+                            {
+                                <h6 class="mt-3 text-primary fw-bold border-bottom pb-1"><i class="bi bi-collection-play"></i> @match.RoundName</h6>
+                            }
+
+                            <div class="match-box mb-2 shadow-sm">
+                                <h6>@match.CourtName</h6>
+                                <div class="fs-5">@((MarkupString)match.MatchText)</div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(restingMembersText))
+                        {
+                            <div class="alert alert-warning mt-3">
+                                <strong>@((generationMode == "five") ? "5試合中一度もお呼びがかからなかった人:" : "今回のお休み:")</strong> @restingMembersText
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+@code {
+    // プレイヤーの型定義（C#のクラス）
+    public class Player
+    {
+        public string Name { get; set; } = "";
+        public int MatchCount { get; set; }
+        public string Status { get; set; } = "active"; // active または resting
+    }
+
+    // コート結果の型定義
+    public class MatchResultItem
+    {
+        public string RoundName { get; set; } = ""; // 💡【追加】「第1試合」などのラウンド名
+        public string CourtName { get; set; } = "";
+        public string MatchText { get; set; } = "";
+    }
+
+    // 画面で使う変数たち
+    private List<Player> players = new List<Player>();
+    private List<MatchResultItem> matchResults = new List<MatchResultItem>();
+    private string newPlayerName = "";
+    private string matchType = "doubles";
+    private string generationMode = "five";
+    private int courtCount = 1;
+    private string restingMembersText = "";
+    private Random rand = new Random();
+    private ElementReference playerNameInput;
+
+    // 💡【追加】直前の試合数を一時的に保存しておくバックアップ用のリスト
+    private List<int> matchCountBackup = new List<int>();
+    private List<Player> lastSelectedPlayers = new List<Player>();
+
+    // 起動時にデータを読み込む（JavaScriptのwindow.onloadに相当）
+    protected override async Task OnInitializedAsync()
+    {
+        // サーバーサイドでの実行を防ぎ、ブラウザ側でのみ動かす（WASMスタンドアロン用）
+        await Task.Delay(1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var savedPlayers = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "tennis_players");
+                if (!string.IsNullOrEmpty(savedPlayers))
+                {
+                    players = System.Text.Json.JsonSerializer.Deserialize<List<Player>>(savedPlayers) ?? new List<Player>();
+                    StateHasChanged(); // 画面を再描画
+                }
+            }
+            catch { }
+        }
+    }
+
+    // データを保存する共通関数
+    private async Task SaveData()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(players);
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "tennis_players", json);
+    }
+
+    // プレイヤー追加
+    private async Task AddPlayer()
+    {
+        var name = newPlayerName?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "名前を入力してください。");
+            await playerNameInput.FocusAsync();
+            return;
+        }
+        if (players.Any(p => p.Name == name))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "同じ名前のプレイヤーがいます。");
+            newPlayerName = "";
+            await playerNameInput.FocusAsync();
+            return;
+        }
+
+        players.Insert(0, new Player { Name = name, MatchCount = 0, Status = "active" });
+        newPlayerName = "";
+
+        await SaveData();
+        await playerNameInput.FocusAsync();
+    }
+
+    // エンターキーを検知
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddPlayer();
+        }
+    }
+
+    // 参加・休憩の切り替え
+    private async Task ToggleStatus(int index)
+    {
+        players[index].Status = players[index].Status == "active" ? "resting" : "active";
+
+        // 【追加】参加(active)が上、休憩(resting)が下になるように並び替える
+        players = players.OrderBy(p => p.Status == "resting").ToList();
+
+        await SaveData();
+    }
+
+    // 削除
+    private async Task RemovePlayer(int index)
+    {
+        players.RemoveAt(index);
+        await SaveData();
+    }
+
+    private async Task ResetMatchCounts()
+    {
+       
+        // 2. 全員の試合数を0にする
+        foreach (var p in players)
+        {
+            p.MatchCount = 0;
+        }
+
+        // 3. 画面に表示されている現在の対戦表や履歴も一緒にクリアする
+        matchResults.Clear();
+        restingMembersText = "";
+        matchCountBackup.Clear();
+        lastSelectedPlayers.Clear();
+
+        // 4. ブラウザ（localStorage）に0リセットした状態を保存
+        await SaveData();
+
+        // 5. 画面を最新の状態に更新
+        StateHasChanged();
+    }
+
+
+
+    // 💡【追加】生成をキャンセルして元に戻す処理
+    private async Task UndoGeneration()
+    {
+        if (!matchResults.Any() || !lastSelectedPlayers.Any()) return;
+
+        // 全プレイヤーの試合数を、完全に生成前のバックアップ（元の値）に巻き戻す
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (i < matchCountBackup.Count)
+            {
+                players[i].MatchCount = matchCountBackup[i];
+            }
+        }
+
+        // 2. 画面の対戦結果とお休みテキストを空っぽにする
+        matchResults.Clear();
+        restingMembersText = "";
+
+        // 3. バックアップをクリア
+        matchCountBackup.Clear();
+        lastSelectedPlayers.Clear();
+
+        // 4. ブラウザ（localStorage）に巻き戻したデータを保存し、画面を更新
+        await SaveData();
+        StateHasChanged();
+    }
+
+
+    // 💡 試合の自動生成ロジック（C#に完全翻訳！）
+    private async Task GenerateMatches()
+    {
+        int requiredPlayersPerCourt = matchType == "doubles" ? 4 : 2;
+        var activePool = players.Where(p => p.Status == "active").ToList();
+        int totalRequiredPlayers = courtCount * requiredPlayersPerCourt;
+
+        if (activePool.Count < totalRequiredPlayers)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"参加中のプレイヤーが足りません。最低 {totalRequiredPlayers} 人必要です。(現在参加中: {activePool.Count}人)");
+            return;
+        }
+
+        // ✅【ココが重要】ループに入る「前」に、全プレイヤーの現在の試合数を完全バックアップ
+        matchCountBackup = players.Select(p => p.MatchCount).ToList();
+        lastSelectedPlayers = new List<Player>(activePool); // Undo実行判定フラグを兼ねる
+
+        // ✅【ココが重要】ループに入る「前」に一度だけ結果をクリアする
+        matchResults.Clear();
+
+        // 設定に合わせてループ回数を決定 (1回 or 5回)
+        int loopCount = generationMode == "five" ? 5 : 1;
+        var allSelectedInSession = new HashSet<string>(); // 5試合中、1回でも選ばれた人の名前を記録
+
+        for (int r = 1; r <= loopCount; r++)
+        {
+            // 1. 試合数が少ない順にソート（同じ場合はランダム）してメンバー決定
+            // ※変数名を「selectedPlayers」に統一しました
+            var selectedPlayers = activePool
+                .OrderBy(p => p.MatchCount)
+                .ThenBy(p => rand.Next())
+                .Take(totalRequiredPlayers)
+                .ToList();
+
+            foreach (var p in selectedPlayers)
+            {
+                allSelectedInSession.Add(p.Name);
+            }
+
+            // 選ばれたメンバーをさらにコート割り当て用にランダムシャッフル
+            var shuffledSelected = selectedPlayers.OrderBy(p => rand.Next()).ToList();
+
+            // 2. コート割り当て
+            int playerIdx = 0;
+            int actualCourts = Math.Min(courtCount, shuffledSelected.Count / requiredPlayersPerCourt);
+
+            // ※二重になっていたfor文を1つに修正しました
+            for (int i = 0; i < actualCourts; i++)
+            {
+                var item = new MatchResultItem();
+
+                // 5試合モードの時は、各試合の最初のコート（コート1）にだけ「第○試合」の見出しをセット
+                if (generationMode == "five" && i == 0)
+                {
+                    item.RoundName = $"第 {r} 試合";
+                }
+
+                item.CourtName = $"コート {i + 1}";
+                string amp = "<small style='color: #888888;'> & </small>";
+                string vs = "<small style='color: #888888;'>vs</small>";
+
+                if (matchType == "doubles")
+                {
+                    var p1 = shuffledSelected[playerIdx++];
+                    var p2 = shuffledSelected[playerIdx++];
+                    var p3 = shuffledSelected[playerIdx++];
+                    var p4 = shuffledSelected[playerIdx++];
+
+                    p1.MatchCount++; p2.MatchCount++; p3.MatchCount++; p4.MatchCount++;
+
+                    item.MatchText = $"{p1.Name}{amp}{p2.Name} {vs} {p3.Name}{amp}{p4.Name}";
+                }
+                else
+                {
+                    var p1 = shuffledSelected[playerIdx++];
+                    var p2 = shuffledSelected[playerIdx++];
+
+                    p1.MatchCount++; p2.MatchCount++;
+
+                    item.MatchText = $"{p1.Name} {vs} {p2.Name}";
+                }
+                matchResults.Add(item);
+            }
+        }
+
+        // 3. お休みメンバーの抽出 (5試合の場合は、このセッションで一度も選ばれなかった人)
+        var restingInActivePool = activePool
+            .Where(p => !allSelectedInSession.Contains(p.Name))
+            .Select(p => p.Name)
+            .ToList();
+
+        if (restingInActivePool.Count > 0)
+        {
+            restingMembersText = string.Join(", ", restingInActivePool);
+        }
+        else
+        {
+            restingMembersText = "";
+        }
+
+        // 4. 保存と描画更新
+        await SaveData();
+    }
+}

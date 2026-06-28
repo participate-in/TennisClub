@@ -1,0 +1,614 @@
+﻿@page "/Calculate"
+@inject IJSRuntime JSRuntime
+@using System.Text.Json
+@using System.Linq
+
+
+<div class="container mt-4">
+    <h3 class="mb-4">出欠表</h3>
+
+    <!-- 設定エリア -->
+    <div class="row mb-4 bg-light p-3 rounded shadow-sm">
+        <div class="col-md-6 mb-2">
+            <h5 class="font-weight-bold">1. 時間帯（横軸）の追加</h5>
+            <div class="input-group">
+                <input type="text" class="form-control" @bind="newTimeSlotName" placeholder="例: 13:00-14:00" />
+                <button class="btn btn-primary" @onclick="AddTimeSlot">追加</button>
+            </div>
+        </div>
+        <div class="col-md-6 mb-2">
+            <h5 class="font-weight-bold">2. 名前（縦軸）の追加</h5>
+            <div class="input-group">
+                <input type="text" class="form-control" @bind="newMemberName" placeholder="例: 山田太郎" />
+                <button class="btn btn-primary" @onclick="AddMember">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex gap-3 bg-dark text-white p-3 rounded shadow-sm align-items-center">
+                <span class="fs-5 fw-bold text-warning">参加者数</span>
+                <div class="ms-auto d-flex gap-4">
+                    <div>
+                        <span class="badge bg-primary fs-5">@liveAnyAttendanceCount 名</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- マトリックス表 -->
+    <table class="table table-bordered text-center align-moddle">
+        <thead>
+            <tr class="table-secondary">
+                <th>名前 / 時間帯</th>
+                @foreach (var slot in TimeSlots)
+                {
+                    <th>
+                        <div class="d-flex align-items-center justify-content-center">
+                            <span class="mr-2">@slot</span>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    @onclick="() => RemoveTimeSlot(slot)"
+                                    title="この時間帯を削除">
+                                ×
+                            </button>
+                        </div>
+                    </th>
+                }
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var member in Members)
+            {
+                <tr>
+                    <td class="font-weight-bold">@member.Name</td>
+
+                    @foreach (var slot in TimeSlots)
+                    {
+                        <td>
+                            <button class="btn @(GetAttendanceStatus(member, slot) ? "btn-success" : "btn-secondary") w-100"
+                                    @onclick="() => ToggleAttendance(member, slot)">
+                                @(GetAttendanceStatus(member, slot) ? "参加" : "ー")
+                            </button>
+                        </td>
+                    }
+
+                    <td>
+                        <button class="btn btn-sm btn-online-danger"
+                                @onclick="() => RemoveMember(member)"
+                                title="この人を削除">
+                            削除
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="container mt-4">
+        <h3 class="mb-4">会計表（自動行追加）</h3>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5 class="card-title text-primary">コート代</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>名目（コート名など）</th>
+                                <th>金額</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < courtFees.Count; i++)
+                            {
+                                var index = i; // ラムダ式用のローカル変数
+                                var fee = courtFees[index];
+                                <tr>
+                                    <td>
+                                        <input type="text" class="form-control form-control-sm"
+                                               @bind="fee.Name"
+                                               @oninput="() => OnCourtInput(index)"
+                                               placeholder="例：Aコート" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               @bind="fee.Amount"
+                                               @oninput="() => OnCourtInput(index)"
+                                               placeholder="0" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <div class="text-end fw-bold text-secondary">
+                        コート代 合計: @courtFees.Sum(f => f.Amount).ToString("N0") 円
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5 class="card-title text-success">アイテム代・管理費等</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>雑費</th>
+                                <th>金額</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < itemFees.Count; i++)
+                            {
+                                var index = i; // ラムダ式用のローカル変数
+                                var fee = itemFees[index];
+                                <tr>
+                                    <td>
+                                        <input type="text" class="form-control form-control-sm"
+                                               @bind="fee.Name"
+                                               @oninput="() => OnItemInput(index)"
+                                               placeholder="例：新球代" />
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               @bind="fee.Amount"
+                                               @oninput="() => OnItemInput(index)"
+                                               placeholder="0" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <div class="text-end fw-bold text-secondary">
+                        アイテム代 合計: @itemFees.Sum(f => f.Amount).ToString("N0") 円
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12 text-end">
+                <h4>総合計: @((courtFees.Sum(f => f.Amount) + itemFees.Sum(f => f.Amount)).ToString("N0")) 円</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4 mb-5">
+        <div class="col-12 text-center">
+            <button class="btn btn-warning btn-lg px-5 font-weight-bold shadow" @onclick="CalculateSettlement">
+                清算する
+            </button>
+        </div>
+    </div>
+
+
+    @if (settlementResults != null && settlementResults.Any())
+    {
+        <div class="card p-4 shadow-sm border-warning mb-5">
+            <h4 class="card-title text-warning font-weight-bold mb-3">📋 清算結果</h4>
+            <table class="table table-striped text-center">
+                <thead>
+                    <tr class="table-warning">
+                        <th>名前</th>
+                        <th>参加コマ数</th>
+                        <th>コート代負担</th>
+                        <th>アイテム代負担</th>
+                        <th class="text-danger font-weight-bold">合計支払額</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var result in settlementResults)
+                    {
+                        <tr>
+                            <td class="font-weight-bold">@result.MemberName</td>
+                            <td>@result.AttendanceCount コマ</td>
+                            <td>@result.CourtShare.ToString("N0") 円</td>
+                            <td>@result.ItemShare.ToString("N0") 円</td>
+                            <td class="text-danger font-weight-bold fs-5">@result.TotalPayment.ToString("N0") 円</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+   
+</div>
+
+
+
+@code {
+
+    private string newTimeSlotName = "";
+    private string newMemberName = "";
+    private int liveAnyAttendanceCount = 0;//1コマでもオンの人数
+    private int liveTotalAttendanceCount = 0;  //総オン数（分母になる数）
+
+    private List<string> TimeSlots = new List<string>();
+    private List<Member> Members = new List<Member>();
+
+
+    // ★ 画面が最初に表示されたときにローカルストレージからデータを読み込む
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDataAsync();
+            StateHasChanged(); // 画面を再描画
+        }
+    }
+
+    // ★ データをローカルストレージに保存するメソッド
+    private async Task SaveDataAsync()
+    {
+        // データをJSONという文字列の形式に変換して保存する
+        var timeSlotsJson = JsonSerializer.Serialize(TimeSlots);
+        var membersJson = JsonSerializer.Serialize(Members);
+
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "attendance_timeslots", timeSlotsJson);
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "attendance_members", membersJson);
+
+        // 人数カウントもローカルストレージに保存する
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "live_any_attendance_count", liveAnyAttendanceCount.ToString());
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "live_total_attendance_count", liveTotalAttendanceCount.ToString());
+    }
+
+    // ★ データをローカルストレージから読み込むメソッド
+    private async Task LoadDataAsync()
+    {
+        var timeSlotsJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "attendance_timeslots");
+        var membersJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "attendance_members");
+
+        if (!string.IsNullOrEmpty(timeSlotsJson))
+        {
+            TimeSlots = JsonSerializer.Deserialize<List<string>>(timeSlotsJson) ?? new List<string>();
+        }
+
+        if (!string.IsNullOrEmpty(membersJson))
+        {
+            Members = JsonSerializer.Deserialize<List<Member>>(membersJson) ?? new List<Member>();
+        }
+
+        // 人数カウントをローカルストレージから読み込んで復元する
+        var anyCountStr = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "live_any_attendance_count");
+        if (!string.IsNullOrEmpty(anyCountStr) && int.TryParse(anyCountStr, out var anyCount))
+        {
+            liveAnyAttendanceCount = anyCount;
+        }
+
+        var totalCountStr = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "live_total_attendance_count");
+        if (!string.IsNullOrEmpty(totalCountStr) && int.TryParse(totalCountStr, out var totalCount))
+        {
+            liveTotalAttendanceCount = totalCount;
+        }
+    }
+
+    // 3. 切替ボタン（ここにもSaveDataAsyncを追加！）
+    private async Task ToggleAttendance(Member member, string slot)
+    {
+        if (member.Attendance.ContainsKey(slot))
+        {
+            member.Attendance[slot] = !member.Attendance[slot];
+        }
+        else
+        {
+            member.Attendance[slot] = true;
+        }
+
+        await UpdateLiveCounts();
+        // 保存
+        await SaveDataAsync();
+    }
+
+    // 1. 時間帯の追加（末尾にSaveDataAsyncを追加）
+    private async Task AddTimeSlot()
+    {
+        if (!string.IsNullOrWhiteSpace(newTimeSlotName) && !TimeSlots.Contains(newTimeSlotName))
+        {
+            TimeSlots.Add(newTimeSlotName);
+            foreach (var member in Members)
+            {
+                if (!member.Attendance.ContainsKey(newTimeSlotName))
+                {
+                    member.Attendance[newTimeSlotName] = false;
+                }
+            }
+            newTimeSlotName = "";
+
+            await UpdateLiveCounts();
+            // 保存
+            await SaveDataAsync();
+        }
+    }
+
+    // ★ 4. 時間帯の削除メソッド
+    private async Task RemoveTimeSlot(string slot)
+    {
+        // 1. 時間帯リストから削除
+        TimeSlots.Remove(slot);
+
+        // 2. 各メンバーが持っているその時間の出欠データも掃除する
+        foreach (var member in Members)
+        {
+            if (member.Attendance.ContainsKey(slot))
+            {
+                member.Attendance.Remove(slot);
+            }
+        }
+
+        // 最新の状態をローカルストレージに保存
+        await SaveDataAsync();
+
+    }
+
+    // 2. 名前の追加（末尾にSaveDataAsyncを追加）
+    private async Task AddMember()
+    {
+        // 入力が空、または空白文字だけの場合は何もしない
+        if (string.IsNullOrWhiteSpace(newMemberName))
+        {
+            return;
+        }
+
+        // ★ 重複チェック：すでに同じ名前がMembersリストにあるか探す
+        // .Trim() を入れることで、前後の余計なスペース（空白）を無視して比較できます
+        bool isDuplicate = Members.Any(m => m.Name.Trim() == newMemberName.Trim());
+
+        if (isDuplicate)
+        {
+            // ブラウザの警告ポップアップを表示
+            await JSRuntime.InvokeVoidAsync("alert", $"「{newMemberName}」はすでに登録されています。");
+            return; // ここで処理を終了し、追加させない
+        }
+
+
+        if (!string.IsNullOrWhiteSpace(newMemberName))
+        {
+            // --- 重複がなければ、これまでの保存処理を実行 ---
+            var newMember = new Member { Name = newMemberName.Trim() };
+            foreach (var slot in TimeSlots)
+            {
+                newMember.Attendance[slot] = false;
+            }
+            Members.Add(newMember);
+            newMemberName = ""; // 入力欄をクリア
+
+            // 保存
+            await SaveDataAsync();
+        }
+    }
+
+    // ★ 3. 名前の削除メソッド
+    private async Task RemoveMember(Member member)
+    {
+
+        // リストから削除
+        Members.Remove(member);
+
+        // 最新の状態をローカルストレージに保存
+        await SaveDataAsync();
+
+    }
+
+    private bool GetAttendanceStatus(Member member, string slot)
+    {
+        return member.Attendance.ContainsKey(slot) && member.Attendance[slot];
+    }
+
+    public class Member
+    {
+        public string Name { get; set; } = "";
+        public Dictionary<string, bool> Attendance { get; set; } = new Dictionary<string, bool>();
+    }
+    // データモデル定義
+    public class FeeItem
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Amount { get; set; }
+    }
+
+    private async Task UpdateLiveCounts()
+    {
+        liveAnyAttendanceCount = 0;
+        liveTotalAttendanceCount = 0;
+
+        foreach (var member in Members)
+        {
+            int memberOnCount = 0;
+            foreach (var slot in TimeSlots)
+            {
+                if (GetAttendanceStatus(member, slot))
+                {
+                    memberOnCount++;
+                }
+            }
+
+
+            liveTotalAttendanceCount += memberOnCount;
+
+            if (memberOnCount > 0)
+            {
+                liveAnyAttendanceCount++;
+            }
+        }
+
+        await SaveDataAsync();
+    }
+    // それぞれのリスト
+    private List<FeeItem> courtFees = new();
+    private List<FeeItem> itemFees = new();
+    // --- アプリ起動時（画面読み込み時）に自動でデータを復元するメソッド ---
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // 1. ローカルストレージからデータを読み込み
+            string courtJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "court_fees_data");
+            string itemJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "item_fees_data");
+
+            // 2. コート代の復元
+            if (!string.IsNullOrEmpty(courtJson))
+            {
+                var savedCourt = JsonSerializer.Deserialize<List<FeeItem>>(courtJson);
+                if (savedCourt != null) courtFees = savedCourt;
+            }
+
+            // 3. アイテム代の復元
+            if (!string.IsNullOrEmpty(itemJson))
+            {
+                var savedItem = JsonSerializer.Deserialize<List<FeeItem>>(itemJson);
+                if (savedItem != null) itemFees = savedItem;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"復元エラー: {ex.Message}");
+        }
+
+        // データが何も保存されていなかった場合、または復元したリストが空の場合に初期の1行を用意
+        if (!courtFees.Any()) courtFees.Add(new FeeItem());
+        if (!itemFees.Any()) itemFees.Add(new FeeItem());
+
+        // 入力後の自動追加ロジックが正常に動くよう、復元したデータの末尾に入力用の空行があるか念のためチェック
+        if (courtFees.Last().Amount != 0 || !string.IsNullOrEmpty(courtFees.Last().Name)) courtFees.Add(new FeeItem());
+        if (itemFees.Last().Amount != 0 || !string.IsNullOrEmpty(itemFees.Last().Name)) itemFees.Add(new FeeItem());
+    }
+
+    // コート代の入力検知
+    private async Task OnCourtInput(int index)
+    {
+        // 入力された行が、現在のリストの「最後の行」だった場合、新しい空行を追加
+        if (index == courtFees.Count - 1)
+        {
+            courtFees.Add(new FeeItem());
+        }
+        // 入力されるたびに自動保存
+        await SaveFeesToLocalStorage();
+
+    }
+
+    // アイテム代の入力検知
+    private async Task OnItemInput(int index)
+    {
+        // 入力された行が、現在のリストの「最後の行」だった場合、新しい空行を追加
+        if (index == itemFees.Count - 1)
+        {
+            itemFees.Add(new FeeItem());
+        }
+
+        // 入力されるたびに自動保存
+        await SaveFeesToLocalStorage();
+    }
+
+    // --- 費用データをローカルストレージに保存するメソッド ---
+    private async Task SaveFeesToLocalStorage()
+    {
+        try
+        {
+            // 費用リストをそれぞれJSONシリアライズ
+            string courtJson = JsonSerializer.Serialize(courtFees);
+            string itemJson = JsonSerializer.Serialize(itemFees);
+
+            // それぞれ別々のキーで保存
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "court_fees_data", courtJson);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "item_fees_data", itemJson);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"保存エラー: {ex.Message}");
+        }
+    }
+
+    // --- 清算結果を保持するためのクラス ---
+    public class SettlementResult
+    {
+        public string MemberName { get; set; } = "";
+        public int AttendanceCount { get; set; }
+        public double CourtShare { get; set; }
+        public double ItemShare { get; set; }
+        public double TotalPayment { get; set; }
+    }
+
+    // 画面表示用のリスト
+    private List<SettlementResult> settlementResults = new();
+
+    // --- 清算ロジック ---
+    private void CalculateSettlement()
+    {
+        settlementResults.Clear();
+
+        if (!Members.Any()) return;
+
+        // 1. 各項目の合計金額を算出
+        double totalCourtFee = courtFees.Sum(f => f.Amount);
+        double totalItemFee = itemFees.Sum(f => f.Amount);
+
+        // 2. 全メンバーの「参加(オン)」の総カウント数を計算
+        int totalAttendanceCount = 0;
+        // 各メンバーごとの「参加」数をあらかじめ計算しておく辞書
+        var memberAttendanceCounts = new Dictionary<object, int>(); // ※Memberの型に合わせてください
+
+        foreach (var member in Members)
+        {
+            int count = 0;
+            foreach (var slot in TimeSlots)
+            {
+                // 既存の出欠判定メソッドを利用
+                if (GetAttendanceStatus(member, slot))
+                {
+                    count++;
+                }
+            }
+            memberAttendanceCounts[member] = count;
+            totalAttendanceCount += count;
+        }
+        int activeMemberCount = memberAttendanceCounts.Values.Count(c => c > 0);
+
+        // 3. 1人あたりのアイテム代（アイテム代 ÷ 参加者数）
+        double rawItemSharePerPerson = activeMemberCount > 0 ? totalItemFee / activeMemberCount : 0;
+
+        // 4. 各メンバーの支払額を計算
+        foreach (var member in Members)
+        {
+            int myAttendanceCount = memberAttendanceCounts[member];
+
+            // 💡 【追加項目】参加数が0の人は、リストに含めずに次の人へスキップ！
+            if (myAttendanceCount == 0)
+            {
+                continue;
+            }
+
+            // コート代の計算 (全体オン数が0なら0円)
+            double rawCourtShare = totalAttendanceCount > 0
+                ? (totalCourtFee / totalAttendanceCount) * myAttendanceCount
+                : 0;
+
+            // ★ここでコート代を10円単位に切り上げ処理
+            double myCourtShare = Math.Ceiling(rawCourtShare / 10.0) * 10;
+
+            //アイテム代も10円単位に繰り上げ
+            double myItemShare = Math.Ceiling(rawItemSharePerPerson / 10.0) * 10.0;
+
+            // 合計金額（コート代切り上げ分 + アイテム代）
+            double totalPayment = myCourtShare + myItemShare;
+
+
+            settlementResults.Add(new SettlementResult
+            {
+                MemberName = member.Name,
+                AttendanceCount = myAttendanceCount,
+                CourtShare = myCourtShare,
+                ItemShare = myItemShare,
+                TotalPayment = totalPayment
+            });
+        }
+
+        // 状態を更新して再描画
+        StateHasChanged();
+    }
+
+}
